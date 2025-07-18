@@ -24,6 +24,7 @@ app.use(cors({
             "http://localhost:5173",
             "http://localhost:8080",
             "http://localhost:4000",
+            "https://myvina.onrender.com",
         ];
         if (!origin || allowedOrigins.includes(origin)) {
             callback(null, true);
