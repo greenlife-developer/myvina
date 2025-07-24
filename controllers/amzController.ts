@@ -26,7 +26,7 @@ const endpoint = "https://sellingpartnerapi-eu.amazon.com";
 const sku = "T5-TUY3-3FH8";
 
 // const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const USE_DUMMY_DATA = false;
+const USE_DUMMY_DATA = true;
 
 interface InventoryItem {
   asin: string;
@@ -302,52 +302,6 @@ const getCustomerReturnsReport = async (req: Request, res: Response) => {
   const REPORT_TYPE = "GET_XML_RETURNS_DATA_BY_RETURN_DATE";
 
   try {
-    if (USE_DUMMY_DATA) {
-      const dummyReturns = [
-        {
-          returnDate: "2025-07-15T10:00:00Z",
-          orderId: "123-4567890-1234567",
-          asin: "B00TEST123",
-          sku: "SKU-001",
-          marketplaceId: "ATVPDKIKX0DER",
-          condition: "New",
-          reason: "Customer changed mind",
-          quantity: 3, // Most returned
-        },
-        {
-          returnDate: "2025-07-16T14:30:00Z",
-          orderId: "123-4567890-7654321",
-          asin: "B00TEST456",
-          sku: "SKU-002",
-          marketplaceId: "ATVPDKIKX0DER",
-          condition: "Used",
-          reason: "Item was damaged during delivery",
-          quantity: 2, // Most damaged
-        },
-        {
-          returnDate: "2025-07-17T09:15:00Z",
-          orderId: "123-4567890-1112223",
-          asin: "B00TEST789",
-          sku: "SKU-003",
-          marketplaceId: "ATVPDKIKX0DER",
-          condition: "New",
-          reason: "Wrong size",
-          quantity: 1, // Least returned → Most profitable
-        },
-      ];
-
-      const summary = getSummaryMetrics(dummyReturns);
-
-      return res.status(200).json({
-        reportId: "dummy-report-id",
-        reportDocumentId: "dummy-doc-id",
-        compressionAlgorithm: "none",
-        count: dummyReturns.length,
-        returnsData: dummyReturns,
-        ...summary,
-      });
-    }
-
     const useManualData = true;
 
     if (useManualData) {

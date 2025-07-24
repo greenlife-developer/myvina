@@ -72,7 +72,7 @@ var marketplaceIds = [
 var endpoint = "https://sellingpartnerapi-eu.amazon.com";
 var sku = "T5-TUY3-3FH8";
 // const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-var USE_DUMMY_DATA = false;
+var USE_DUMMY_DATA = true;
 var auth = function (req, res) { return __awaiter(void 0, void 0, void 0, function () {
     var response, error_1;
     return __generator(this, function (_a) {
@@ -336,7 +336,7 @@ var getCustomerReturnsReport = function (req, res) { return __awaiter(void 0, vo
             mostProfitableProduct: (mostProfitable === null || mostProfitable === void 0 ? void 0 : mostProfitable[0]) || null,
         };
     }
-    var _a, marketplaceIds, startDate, endDate, REPORT_TYPE, dummyReturns, summary, useManualData, start, end, returnsFromDB, summary, authTokens, headers, createReportResponse, reportId, reportDocumentId, attempts, maxAttempts, getReportResponse, status_1, getDocResponse, downloadUrl, compressionAlgorithm, fileResponse, fileData, returnsJson, summary, error_6;
+    var _a, marketplaceIds, startDate, endDate, REPORT_TYPE, useManualData, start, end, returnsFromDB, summary, authTokens, headers, createReportResponse, reportId, reportDocumentId, attempts, maxAttempts, getReportResponse, status_1, getDocResponse, downloadUrl, compressionAlgorithm, fileResponse, fileData, returnsJson, summary, error_6;
     return __generator(this, function (_b) {
         switch (_b.label) {
             case 0:
@@ -345,42 +345,6 @@ var getCustomerReturnsReport = function (req, res) { return __awaiter(void 0, vo
                 _b.label = 1;
             case 1:
                 _b.trys.push([1, 16, , 17]);
-                if (USE_DUMMY_DATA) {
-                    dummyReturns = [
-                        {
-                            returnDate: "2025-07-15T10:00:00Z",
-                            orderId: "123-4567890-1234567",
-                            asin: "B00TEST123",
-                            sku: "SKU-001",
-                            marketplaceId: "ATVPDKIKX0DER",
-                            condition: "New",
-                            reason: "Customer changed mind",
-                            quantity: 3, // Most returned
-                        },
-                        {
-                            returnDate: "2025-07-16T14:30:00Z",
-                            orderId: "123-4567890-7654321",
-                            asin: "B00TEST456",
-                            sku: "SKU-002",
-                            marketplaceId: "ATVPDKIKX0DER",
-                            condition: "Used",
-                            reason: "Item was damaged during delivery",
-                            quantity: 2, // Most damaged
-                        },
-                        {
-                            returnDate: "2025-07-17T09:15:00Z",
-                            orderId: "123-4567890-1112223",
-                            asin: "B00TEST789",
-                            sku: "SKU-003",
-                            marketplaceId: "ATVPDKIKX0DER",
-                            condition: "New",
-                            reason: "Wrong size",
-                            quantity: 1, // Least returned → Most profitable
-                        },
-                    ];
-                    summary = getSummaryMetrics(dummyReturns);
-                    return [2 /*return*/, res.status(200).json(__assign({ reportId: "dummy-report-id", reportDocumentId: "dummy-doc-id", compressionAlgorithm: "none", count: dummyReturns.length, returnsData: dummyReturns }, summary))];
-                }
                 useManualData = true;
                 if (!useManualData) return [3 /*break*/, 3];
                 start = new Date(startDate);
