@@ -51,11 +51,12 @@ var parseTSVtoJSON_1 = require("../utils/amz/parseTSVtoJSON");
 var axios = require("axios");
 var fs = require("fs");
 var moment = require("moment");
-var authenticate = require("../utils/amz/auth").authenticate;
+var auth_1 = require("../utils/amz/auth");
 var _a = require("../utils/amz/feeds"), createFeedDocument = _a.createFeedDocument, uploadFeed = _a.uploadFeed;
 var shipmentData = require("../utils/amz/shipmentData").shipmentData;
 var _b = require("../utils/amz/listingData"), listingData = _b.listingData, patchListingData = _b.patchListingData;
 var zlib = require("zlib");
+var Return_1 = require("../model/Return");
 var marketplace_id = "A1PA6795UKMFR9"; // This is used for the case of a single id
 var marketplaceIds = [
     "A13V1IB3VIYZZH",
@@ -67,11 +68,11 @@ var marketplaceIds = [
     "A1F83G8C2ARO7P",
     "A1C3SOZRARQ6R3",
     "A2NODRKZP88ZB9",
-]; // This is used for the case of many ids. You can add as much as possible.
+];
 var endpoint = "https://sellingpartnerapi-eu.amazon.com";
 var sku = "T5-TUY3-3FH8";
 // const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-var USE_DUMMY_DATA = true;
+var USE_DUMMY_DATA = false;
 var auth = function (req, res) { return __awaiter(void 0, void 0, void 0, function () {
     var response, error_1;
     return __generator(this, function (_a) {
@@ -114,7 +115,7 @@ var getOrders = function (req, res) { return __awaiter(void 0, void 0, void 0, f
                 createdBeforeFormatted = createdBefore
                     ? new Date(createdBefore).toISOString()
                     : undefined;
-                return [4 /*yield*/, authenticate()];
+                return [4 /*yield*/, (0, auth_1.authenticate)()];
             case 2:
                 authTokens_1 = _b.sent();
                 baseUrl_1 = "".concat(endpoint, "/orders/v0/orders");
@@ -224,7 +225,7 @@ var getInventory = function (req, res) { return __awaiter(void 0, void 0, void 0
                 _c.label = 1;
             case 1:
                 _c.trys.push([1, 7, , 8]);
-                return [4 /*yield*/, authenticate()];
+                return [4 /*yield*/, (0, auth_1.authenticate)()];
             case 2:
                 authTokens = _c.sent();
                 baseUrl = "".concat(endpoint, "/fba/inventory/v1/summaries");
@@ -335,15 +336,15 @@ var getCustomerReturnsReport = function (req, res) { return __awaiter(void 0, vo
             mostProfitableProduct: (mostProfitable === null || mostProfitable === void 0 ? void 0 : mostProfitable[0]) || null,
         };
     }
-    var _a, marketplaceIds, startDate, endDate, REPORT_TYPE, dummyReturns, summary_1, authTokens, headers, createReportResponse, reportId, reportDocumentId, attempts, maxAttempts, getReportResponse, status_1, getDocResponse, downloadUrl, compressionAlgorithm, fileResponse, fileData, returnsJson, summary, error_6;
+    var _a, marketplaceIds, startDate, endDate, REPORT_TYPE, dummyReturns, summary, useManualData, start, end, returnsFromDB, summary, authTokens, headers, createReportResponse, reportId, reportDocumentId, attempts, maxAttempts, getReportResponse, status_1, getDocResponse, downloadUrl, compressionAlgorithm, fileResponse, fileData, returnsJson, summary, error_6;
     return __generator(this, function (_b) {
         switch (_b.label) {
             case 0:
                 _a = req.query, marketplaceIds = _a.marketplaceIds, startDate = _a.startDate, endDate = _a.endDate;
-                REPORT_TYPE = "GET_FBA_FULFILLMENT_CUSTOMER_RETURNS_DATA";
+                REPORT_TYPE = "GET_XML_RETURNS_DATA_BY_RETURN_DATE";
                 _b.label = 1;
             case 1:
-                _b.trys.push([1, 13, , 14]);
+                _b.trys.push([1, 16, , 17]);
                 if (USE_DUMMY_DATA) {
                     dummyReturns = [
                         {
@@ -377,11 +378,34 @@ var getCustomerReturnsReport = function (req, res) { return __awaiter(void 0, vo
                             quantity: 1, // Least returned → Most profitable
                         },
                     ];
-                    summary_1 = getSummaryMetrics(dummyReturns);
-                    return [2 /*return*/, res.status(200).json(__assign({ reportId: "dummy-report-id", reportDocumentId: "dummy-doc-id", compressionAlgorithm: "none", count: dummyReturns.length, returnsData: dummyReturns }, summary_1))];
+                    summary = getSummaryMetrics(dummyReturns);
+                    return [2 /*return*/, res.status(200).json(__assign({ reportId: "dummy-report-id", reportDocumentId: "dummy-doc-id", compressionAlgorithm: "none", count: dummyReturns.length, returnsData: dummyReturns }, summary))];
                 }
-                return [4 /*yield*/, authenticate()];
+                useManualData = true;
+                if (!useManualData) return [3 /*break*/, 3];
+                start = new Date(startDate);
+                end = new Date(endDate);
+                end.setUTCHours(23, 59, 59, 999); // ← include the full day
+                console.log("Fetching returns from DB:", {
+                    marketplaceIds: marketplaceIds,
+                    start: start,
+                    end: end
+                });
+                return [4 /*yield*/, Return_1.default.find({
+                        marketplaceId: Array.isArray(marketplaceIds)
+                            ? { $in: marketplaceIds }
+                            : marketplaceIds,
+                        returnDate: {
+                            $gte: start,
+                            $lte: end,
+                        },
+                    })];
             case 2:
+                returnsFromDB = _b.sent();
+                summary = getSummaryMetrics(returnsFromDB);
+                return [2 /*return*/, res.status(200).json(__assign({ compressionAlgorithm: "none", count: returnsFromDB.length, returnsData: returnsFromDB }, summary))];
+            case 3: return [4 /*yield*/, (0, auth_1.authenticate)()];
+            case 4:
                 authTokens = _b.sent();
                 headers = {
                     Authorization: "Bearer ".concat(authTokens.access_token),
@@ -397,44 +421,44 @@ var getCustomerReturnsReport = function (req, res) { return __awaiter(void 0, vo
                             ? marketplaceIds
                             : [marketplaceIds],
                     }, { headers: headers })];
-            case 3:
+            case 5:
                 createReportResponse = _b.sent();
                 reportId = createReportResponse.data.reportId;
                 reportDocumentId = null;
                 attempts = 0;
                 maxAttempts = 10;
-                _b.label = 4;
-            case 4:
-                if (!(!reportDocumentId && attempts < maxAttempts)) return [3 /*break*/, 10];
+                _b.label = 6;
+            case 6:
+                if (!(!reportDocumentId && attempts < maxAttempts)) return [3 /*break*/, 12];
                 attempts++;
                 return [4 /*yield*/, axios.get("https://sellingpartnerapi-na.amazon.com/reports/2021-06-30/reports/".concat(reportId), { headers: headers })];
-            case 5:
+            case 7:
                 getReportResponse = _b.sent();
                 status_1 = getReportResponse.data.processingStatus;
-                if (!(status_1 === "DONE")) return [3 /*break*/, 6];
+                if (!(status_1 === "DONE")) return [3 /*break*/, 8];
                 reportDocumentId = getReportResponse.data.reportDocumentId;
-                return [3 /*break*/, 9];
-            case 6:
-                if (!["CANCELLED", "FATAL"].includes(status_1)) return [3 /*break*/, 7];
-                throw new Error("Report processing failed: ".concat(status_1));
-            case 7: return [4 /*yield*/, new Promise(function (resolve) { return setTimeout(resolve, 20000); })];
+                return [3 /*break*/, 11];
             case 8:
-                _b.sent();
-                _b.label = 9;
-            case 9: return [3 /*break*/, 4];
+                if (!["CANCELLED", "FATAL"].includes(status_1)) return [3 /*break*/, 9];
+                throw new Error("Report processing failed: ".concat(status_1));
+            case 9: return [4 /*yield*/, new Promise(function (resolve) { return setTimeout(resolve, 20000); })];
             case 10:
+                _b.sent();
+                _b.label = 11;
+            case 11: return [3 /*break*/, 6];
+            case 12:
                 if (!reportDocumentId) {
                     throw new Error("Report was not ready after maximum attempts");
                 }
                 return [4 /*yield*/, axios.get("https://sellingpartnerapi-na.amazon.com/reports/2021-06-30/documents/".concat(reportDocumentId), { headers: headers })];
-            case 11:
+            case 13:
                 getDocResponse = _b.sent();
                 downloadUrl = getDocResponse.data.url;
                 compressionAlgorithm = getDocResponse.data.compressionAlgorithm;
                 return [4 /*yield*/, axios.get(downloadUrl, {
                         responseType: "arraybuffer",
                     })];
-            case 12:
+            case 14:
                 fileResponse = _b.sent();
                 fileData = void 0;
                 if (compressionAlgorithm === "GZIP") {
@@ -446,7 +470,8 @@ var getCustomerReturnsReport = function (req, res) { return __awaiter(void 0, vo
                 returnsJson = (0, parseTSVtoJSON_1.parseTSVtoJSON)(fileData);
                 summary = getSummaryMetrics(returnsJson);
                 return [2 /*return*/, res.status(200).json(__assign({ reportId: reportId, reportDocumentId: reportDocumentId, compressionAlgorithm: compressionAlgorithm || "none", count: returnsJson.length, returnsData: returnsJson }, summary))];
-            case 13:
+            case 15: return [3 /*break*/, 17];
+            case 16:
                 error_6 = _b.sent();
                 console.error("Error fetching returns report:", error_6.message);
                 return [2 /*return*/, res.status(500).json({
@@ -454,7 +479,7 @@ var getCustomerReturnsReport = function (req, res) { return __awaiter(void 0, vo
                         response: error_6.response ? error_6.response.data : null,
                         stack: error_6.stack,
                     })];
-            case 14: return [2 /*return*/];
+            case 17: return [2 /*return*/];
         }
     });
 }); };
@@ -476,7 +501,7 @@ var getPaymentDetails = function (req, res) { return __awaiter(void 0, void 0, v
                             netProfitEstimate: 13240,
                         })];
                 }
-                return [4 /*yield*/, authenticate()];
+                return [4 /*yield*/, (0, auth_1.authenticate)()];
             case 1:
                 authTokens = _t.sent();
                 headers = {
@@ -558,12 +583,12 @@ var getPaymentDetails = function (req, res) { return __awaiter(void 0, void 0, v
     });
 }); };
 var getAccount = function (req, res) { return __awaiter(void 0, void 0, void 0, function () {
-    var authTokens, headers, response, error_8;
+    var authTokens, headers, body, response, error_8;
     return __generator(this, function (_a) {
         switch (_a.label) {
             case 0:
                 _a.trys.push([0, 3, , 4]);
-                return [4 /*yield*/, authenticate()];
+                return [4 /*yield*/, (0, auth_1.authenticate)()];
             case 1:
                 authTokens = _a.sent();
                 headers = {
@@ -571,7 +596,28 @@ var getAccount = function (req, res) { return __awaiter(void 0, void 0, void 0, 
                     "x-amz-access-token": authTokens.access_token,
                     "Content-Type": "application/json",
                 };
-                return [4 /*yield*/, axios.get("".concat(endpoint, "/sellers/v1/marketplaceParticipations"), { headers: headers })];
+                body = {
+                    FeesEstimateRequestList: [
+                        {
+                            MarketplaceId: "A21TJRUUN4KGV",
+                            IdType: "SellerSKU",
+                            IdValue: "Kids-Butterfly-Blue-0-1 Years",
+                            IsAmazonFulfilled: true,
+                            Identifier: "Estimate1",
+                            PriceToEstimateFees: {
+                                ListingPrice: {
+                                    CurrencyCode: "USD",
+                                    Amount: 10.0,
+                                },
+                                Shipping: {
+                                    CurrencyCode: "USD",
+                                    Amount: 0.0,
+                                },
+                            },
+                        },
+                    ],
+                };
+                return [4 /*yield*/, axios.post("".concat(endpoint, "/products/fees/v0/feesEstimate"), body, { headers: headers })];
             case 2:
                 response = _a.sent();
                 console.log("Response data:560 ", response.data);
@@ -589,83 +635,158 @@ var getAccount = function (req, res) { return __awaiter(void 0, void 0, void 0, 
     });
 }); };
 var getInventoryValue = function (req, res) { return __awaiter(void 0, void 0, void 0, function () {
-    var dummyItems, dummyTotal, sellerId, marketplaceId, endpointBase, totalValue, nextToken, authTokens, url, data, items, pagination, _i, items_1, item, price, qty, error_9;
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j;
-    return __generator(this, function (_k) {
-        switch (_k.label) {
+    var _a, _b, marketplaceId, _c, sku, _d, sellerId, totalValue, nextToken, retryCount, maxRetries, inventoryItems, authTokens_2, baseUrl_2, queryParams_2, fetchInventory_1, error_9;
+    var _e, _f;
+    return __generator(this, function (_g) {
+        switch (_g.label) {
             case 0:
-                if (USE_DUMMY_DATA) {
-                    dummyItems = [
-                        { offers: [{ price: { amount: "50.00" } }], fulfillmentAvailability: [{ quantity: 20 }] },
-                        { offers: [{ price: { amount: "30.00" } }], fulfillmentAvailability: [{ quantity: 10 }] },
-                        { offers: [{ price: { amount: "100.00" } }], fulfillmentAvailability: [{ quantity: 5 }] },
-                    ];
-                    dummyTotal = dummyItems.reduce(function (sum, item) {
-                        var _a, _b, _c, _d, _e, _f, _g;
-                        var price = parseFloat((_d = (_c = (_b = (_a = item.offers) === null || _a === void 0 ? void 0 : _a[0]) === null || _b === void 0 ? void 0 : _b.price) === null || _c === void 0 ? void 0 : _c.amount) !== null && _d !== void 0 ? _d : "0");
-                        var qty = parseInt(String((_g = (_f = (_e = item.fulfillmentAvailability) === null || _e === void 0 ? void 0 : _e[0]) === null || _f === void 0 ? void 0 : _f.quantity) !== null && _g !== void 0 ? _g : "0"), 10);
-                        return sum + price * qty;
-                    }, 0);
-                    return [2 /*return*/, res.status(200).json({
-                            totalInventoryValue: dummyTotal.toFixed(2),
-                            currency: "USD",
-                            source: "dummy",
-                        })];
-                }
-                sellerId = "A2NH4IXZ2D0U9U";
-                marketplaceId = "A21TJRUUN4KGV";
-                endpointBase = "https://sellingpartnerapi-eu.amazon.com";
+                _a = req.query, _b = _a.marketplaceId, marketplaceId = _b === void 0 ? "A21TJRUUN4KGV" : _b, _c = _a.sku, sku = _c === void 0 ? "0W-C7T5-ESJ7" : _c, _d = _a.sellerId, sellerId = _d === void 0 ? "AXO3C55P4B1RQ" : _d;
                 totalValue = 0;
-                _k.label = 1;
+                retryCount = 0;
+                maxRetries = 5;
+                inventoryItems = [];
+                _g.label = 1;
             case 1:
-                _k.trys.push([1, 7, , 8]);
-                return [4 /*yield*/, authenticate()];
+                _g.trys.push([1, 7, , 8]);
+                return [4 /*yield*/, (0, auth_1.authenticate)()];
             case 2:
-                authTokens = _k.sent();
-                _k.label = 3;
-            case 3:
-                url = new URL("".concat(endpointBase, "/listings/2021-08-01/items/").concat(encodeURIComponent(sellerId)));
-                url.searchParams.set("marketplaceIds", marketplaceId);
-                url.searchParams.set("includedData", "offers,fulfillmentAvailability");
-                if (nextToken)
-                    url.searchParams.set("nextToken", nextToken);
-                return [4 /*yield*/, axios.get(url.toString(), {
-                        headers: {
-                            Authorization: "Bearer ".concat(authTokens.access_token),
-                            "x-amz-access-token": authTokens.access_token,
-                            "Content-Type": "application/json",
-                        },
-                    })];
+                authTokens_2 = _g.sent();
+                baseUrl_2 = "".concat(endpoint, "/listings/2021-08-01/items/").concat(sellerId);
+                queryParams_2 = {
+                    marketplaceIds: marketplaceId,
+                    includedData: "offers,fulfillmentAvailability",
+                };
+                fetchInventory_1 = function () { return __awaiter(void 0, void 0, void 0, function () {
+                    var queryString, url, response, _a, items, pagination, _i, items_1, item, price, qty, error_10, retryAfter_3;
+                    var _b, _c, _d, _e, _f, _g, _h, _j;
+                    return __generator(this, function (_k) {
+                        switch (_k.label) {
+                            case 0:
+                                if (nextToken) {
+                                    queryParams_2.pageToken = nextToken;
+                                }
+                                else {
+                                    delete queryParams_2.pageToken;
+                                }
+                                queryString = new URLSearchParams(queryParams_2).toString();
+                                url = "".concat(baseUrl_2, "?").concat(queryString);
+                                console.log("Fetching inventory from URL:", url);
+                                _k.label = 1;
+                            case 1:
+                                _k.trys.push([1, 3, , 8]);
+                                return [4 /*yield*/, axios.get(url, {
+                                        headers: {
+                                            "x-amz-access-token": authTokens_2.access_token,
+                                            "Content-Type": "application/json",
+                                        },
+                                    })];
+                            case 2:
+                                response = _k.sent();
+                                _a = response.data, items = _a.items, pagination = _a.pagination;
+                                if (!Array.isArray(items)) {
+                                    throw new Error("Unexpected response format: items is not an array");
+                                }
+                                for (_i = 0, items_1 = items; _i < items_1.length; _i++) {
+                                    item = items_1[_i];
+                                    price = parseFloat((_e = (_d = (_c = (_b = item.offers) === null || _b === void 0 ? void 0 : _b[0]) === null || _c === void 0 ? void 0 : _c.price) === null || _d === void 0 ? void 0 : _d.amount) !== null && _e !== void 0 ? _e : "0");
+                                    qty = parseInt((_h = (_g = (_f = item.fulfillmentAvailability) === null || _f === void 0 ? void 0 : _f[0]) === null || _g === void 0 ? void 0 : _g.quantity) !== null && _h !== void 0 ? _h : "0", 10);
+                                    totalValue += price * qty;
+                                }
+                                if (items) {
+                                    inventoryItems.push(items);
+                                }
+                                nextToken = (pagination === null || pagination === void 0 ? void 0 : pagination.nextToken) || undefined;
+                                retryCount = 0; // reset on success
+                                return [3 /*break*/, 8];
+                            case 3:
+                                error_10 = _k.sent();
+                                if (!(((_j = error_10.response) === null || _j === void 0 ? void 0 : _j.status) === 429 && retryCount < maxRetries)) return [3 /*break*/, 6];
+                                retryCount++;
+                                retryAfter_3 = error_10.response.headers["retry-after"] || Math.pow(2, retryCount);
+                                console.warn("Rate limited. Retrying after ".concat(retryAfter_3, " seconds..."));
+                                return [4 /*yield*/, new Promise(function (resolve) {
+                                        return setTimeout(resolve, retryAfter_3 * 1000);
+                                    })];
+                            case 4:
+                                _k.sent();
+                                return [4 /*yield*/, fetchInventory_1()];
+                            case 5:
+                                _k.sent(); // retry
+                                return [3 /*break*/, 7];
+                            case 6: throw error_10;
+                            case 7: return [3 /*break*/, 8];
+                            case 8: return [2 /*return*/];
+                        }
+                    });
+                }); };
+                _g.label = 3;
+            case 3: return [4 /*yield*/, fetchInventory_1()];
             case 4:
-                data = (_k.sent()).data;
-                items = data.items, pagination = data.pagination;
-                if (!Array.isArray(items)) {
-                    throw new Error("Unexpected response format");
-                }
-                for (_i = 0, items_1 = items; _i < items_1.length; _i++) {
-                    item = items_1[_i];
-                    price = parseFloat((_d = (_c = (_b = (_a = item.offers) === null || _a === void 0 ? void 0 : _a[0]) === null || _b === void 0 ? void 0 : _b.price) === null || _c === void 0 ? void 0 : _c.amount) !== null && _d !== void 0 ? _d : "0");
-                    qty = parseInt((_g = (_f = (_e = item.fulfillmentAvailability) === null || _e === void 0 ? void 0 : _e[0]) === null || _f === void 0 ? void 0 : _f.quantity) !== null && _g !== void 0 ? _g : "0", 10);
-                    totalValue += price * qty;
-                }
-                nextToken = pagination === null || pagination === void 0 ? void 0 : pagination.nextToken;
-                _k.label = 5;
+                _g.sent();
+                _g.label = 5;
             case 5:
                 if (nextToken) return [3 /*break*/, 3];
-                _k.label = 6;
+                _g.label = 6;
             case 6: return [2 /*return*/, res.status(200).json({
                     totalInventoryValue: totalValue.toFixed(2),
                     currency: "INR",
                     source: "live",
+                    items: inventoryItems.flat(),
                 })];
             case 7:
-                error_9 = _k.sent();
-                console.error("Error fetching inventory value:", ((_h = error_9.response) === null || _h === void 0 ? void 0 : _h.data) || error_9.message);
+                error_9 = _g.sent();
+                console.error("Error fetching inventory value:", ((_e = error_9.response) === null || _e === void 0 ? void 0 : _e.data) || error_9.message);
                 return [2 /*return*/, res.status(500).json({
                         message: error_9.message,
-                        response: ((_j = error_9.response) === null || _j === void 0 ? void 0 : _j.data) || null,
+                        response: ((_f = error_9.response) === null || _f === void 0 ? void 0 : _f.data) || null,
                     })];
             case 8: return [2 /*return*/];
+        }
+    });
+}); };
+var postReturns = function (req, res) { return __awaiter(void 0, void 0, void 0, function () {
+    var _a, returnDate, orderId, asin, sku_1, marketplaceId, condition, reason, quantity, status_2, refundAmount, newReturn, error_11;
+    return __generator(this, function (_b) {
+        switch (_b.label) {
+            case 0:
+                _b.trys.push([0, 2, , 3]);
+                _a = req.body, returnDate = _a.returnDate, orderId = _a.orderId, asin = _a.asin, sku_1 = _a.sku, marketplaceId = _a.marketplaceId, condition = _a.condition, reason = _a.reason, quantity = _a.quantity, status_2 = _a.status, refundAmount = _a.refundAmount;
+                console.log("BODY: ", req.body);
+                if (!returnDate ||
+                    !orderId ||
+                    !asin ||
+                    !sku_1 ||
+                    !marketplaceId ||
+                    !condition ||
+                    !reason ||
+                    !quantity) {
+                    return [2 /*return*/, res.status(400).json({ message: "All fields are required" })];
+                }
+                newReturn = new Return_1.default({
+                    returnDate: returnDate,
+                    orderId: orderId,
+                    asin: asin,
+                    sku: sku_1,
+                    marketplaceId: marketplaceId,
+                    condition: condition,
+                    reason: reason,
+                    status: status_2,
+                    quantity: quantity,
+                    refundAmount: refundAmount || 0,
+                });
+                return [4 /*yield*/, newReturn.save()];
+            case 1:
+                _b.sent();
+                return [2 /*return*/, res
+                        .status(201)
+                        .json({ message: "Return added successfully", data: newReturn })];
+            case 2:
+                error_11 = _b.sent();
+                console.error("Error adding return:", error_11.message);
+                return [2 /*return*/, res
+                        .status(500)
+                        .json({ message: "Server error", error: error_11.message })];
+            case 3: return [2 /*return*/];
         }
     });
 }); };
@@ -677,14 +798,5 @@ module.exports = {
     getPaymentDetails: getPaymentDetails,
     getAccount: getAccount,
     getInventoryValue: getInventoryValue,
+    postReturns: postReturns,
 };
-// 'A13V1IB3VIYZZH': 'France',
-//   'APJ6JRA9NG5V4': 'Italy',
-//   'A1RKKUPIHCS9HS': 'Spain',
-//   'AMEN7PMS3EDWL': 'Belgium',
-//   'A1PA6795UKMFR9': 'Germany',
-//   'A1805IZSGTT6HS': 'Netherlands',
-//   'A1F83G8C2ARO7P': 'United Kingdom',
-//   'A1C3SOZRARQ6R3': 'Poland',
-//   'A2NODRKZP88ZB9': 'Sweden'
-// }

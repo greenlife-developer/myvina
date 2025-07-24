@@ -1,6 +1,6 @@
 var express = require("express");
 var router = express.Router();
-var _a = require("../controllers/amzController"), getOrders = _a.getOrders, auth = _a.auth, getInventory = _a.getInventory, getCustomerReturnsReport = _a.getCustomerReturnsReport, getPaymentDetails = _a.getPaymentDetails, getAccount = _a.getAccount, getInventoryValue = _a.getInventoryValue;
+var _a = require("../controllers/amzController"), getOrders = _a.getOrders, auth = _a.auth, getInventory = _a.getInventory, getCustomerReturnsReport = _a.getCustomerReturnsReport, getPaymentDetails = _a.getPaymentDetails, getAccount = _a.getAccount, getInventoryValue = _a.getInventoryValue, postReturns = _a.postReturns;
 router.post("/auth", auth);
 router.get("/get-orders", getOrders);
 router.get("/get-inventory", getInventory);
@@ -8,4 +8,5 @@ router.get("/get-customer-returns-report", getCustomerReturnsReport);
 router.get("/get-payment-details", getPaymentDetails);
 router.get("/get-account", getAccount);
 router.get("/inventory-value", getInventoryValue);
+router.post("/post-returns", postReturns);
 module.exports = router;

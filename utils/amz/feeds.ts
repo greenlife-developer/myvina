@@ -1,10 +1,10 @@
 const { authenticate } = require("./auth");
 const axios = require("axios");
-const { exampleFeedDocument } = require("./exampleFeedDocument");
+import { exampleFeedDocument } from "./exampleFeedDocument";
 const endpoint = "https://sellingpartnerapi-eu.amazon.com";
 
 
-const createFeedDocument = async () => {
+export const createFeedDocument = async () => {
     try {
         const authTokens = await authenticate();
         const response = await axios.post(
@@ -28,7 +28,7 @@ const createFeedDocument = async () => {
 
 
 
-const uploadFeed = async (feedUrl) => {
+export const uploadFeed = async (feedUrl) => {
     const contentType = "application/json; charset=utf-8";
 
     const instance = axios.create({

@@ -1,4 +1,7 @@
-const exampleFeedDocument = () => {
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.exampleFeedDocument = void 0;
+var exampleFeedDocument = function () {
     return {
         header: {
             sellerId: process.env.AMZ_SELLER_ID,
@@ -88,9 +91,6 @@ const exampleFeedDocument = () => {
                 ],
             },
         ],
-    }
-}
-
-module.exports = {
-    exampleFeedDocument
-}
+    };
+};
+exports.exampleFeedDocument = exampleFeedDocument;

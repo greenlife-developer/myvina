@@ -3,11 +3,12 @@ import { parseTSVtoJSON } from "../utils/amz/parseTSVtoJSON";
 const axios = require("axios");
 const fs = require("fs");
 const moment = require("moment");
-const { authenticate } = require("../utils/amz/auth");
+import { authenticate } from "../utils/amz/auth";
 const { createFeedDocument, uploadFeed } = require("../utils/amz/feeds");
 const { shipmentData } = require("../utils/amz/shipmentData");
 const { listingData, patchListingData } = require("../utils/amz/listingData");
 const zlib = require("zlib");
+import ReturnModel from "../model/Return";
 
 const marketplace_id = "A1PA6795UKMFR9"; // This is used for the case of a single id
 const marketplaceIds = [
@@ -20,12 +21,12 @@ const marketplaceIds = [
   "A1F83G8C2ARO7P",
   "A1C3SOZRARQ6R3",
   "A2NODRKZP88ZB9",
-]; // This is used for the case of many ids. You can add as much as possible.
+];
 const endpoint = "https://sellingpartnerapi-eu.amazon.com";
 const sku = "T5-TUY3-3FH8";
 
 // const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const USE_DUMMY_DATA = true;
+const USE_DUMMY_DATA = false;
 
 interface InventoryItem {
   asin: string;
@@ -298,7 +299,7 @@ const getCustomerReturnsReport = async (req: Request, res: Response) => {
     };
   }
 
-  const REPORT_TYPE = "GET_FBA_FULFILLMENT_CUSTOMER_RETURNS_DATA";
+  const REPORT_TYPE = "GET_XML_RETURNS_DATA_BY_RETURN_DATE";
 
   try {
     if (USE_DUMMY_DATA) {
@@ -347,88 +348,119 @@ const getCustomerReturnsReport = async (req: Request, res: Response) => {
       });
     }
 
-    const authTokens = await authenticate();
-    const headers = {
-      Authorization: `Bearer ${authTokens.access_token}`,
-      "x-amz-access-token": authTokens.access_token,
-      "Content-Type": "application/json",
-    };
+    const useManualData = true;
 
-    const createReportResponse = await axios.post(
-      "https://sellingpartnerapi-na.amazon.com/reports/2021-06-30/reports",
-      {
-        reportType: REPORT_TYPE,
-        dataStartTime:
-          startDate ||
-          new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-        dataEndTime: endDate || new Date().toISOString(),
-        marketplaceIds: Array.isArray(marketplaceIds)
-          ? marketplaceIds
-          : [marketplaceIds],
-      },
-      { headers }
-    );
+    if (useManualData) {
+      // get data from returns model
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      end.setUTCHours(23, 59, 59, 999); // ← include the full day
 
-    const reportId: string = createReportResponse.data.reportId;
+      console.log("Fetching returns from DB:", {
+        marketplaceIds, start, end});
 
-    let reportDocumentId: string | null = null;
-    let attempts = 0;
-    const maxAttempts = 10;
+      const returnsFromDB = await ReturnModel.find({
+        marketplaceId: Array.isArray(marketplaceIds)
+          ? { $in: marketplaceIds }
+          : marketplaceIds,
+        returnDate: {
+          $gte: start,
+          $lte: end,
+        },
+      });
 
-    while (!reportDocumentId && attempts < maxAttempts) {
-      attempts++;
-      const getReportResponse = await axios.get(
-        `https://sellingpartnerapi-na.amazon.com/reports/2021-06-30/reports/${reportId}`,
+      const summary = getSummaryMetrics(returnsFromDB);
+
+      return res.status(200).json({
+        compressionAlgorithm: "none",
+        count: returnsFromDB.length,
+        returnsData: returnsFromDB,
+        ...summary,
+      });
+    } else {
+      const authTokens = await authenticate();
+      const headers = {
+        Authorization: `Bearer ${authTokens.access_token}`,
+        "x-amz-access-token": authTokens.access_token,
+        "Content-Type": "application/json",
+      };
+
+      const createReportResponse = await axios.post(
+        "https://sellingpartnerapi-na.amazon.com/reports/2021-06-30/reports",
+        {
+          reportType: REPORT_TYPE,
+          dataStartTime:
+            startDate ||
+            new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+          dataEndTime: endDate || new Date().toISOString(),
+          marketplaceIds: Array.isArray(marketplaceIds)
+            ? marketplaceIds
+            : [marketplaceIds],
+        },
         { headers }
       );
 
-      const status: string = getReportResponse.data.processingStatus;
+      const reportId: string = createReportResponse.data.reportId;
 
-      if (status === "DONE") {
-        reportDocumentId = getReportResponse.data.reportDocumentId;
-      } else if (["CANCELLED", "FATAL"].includes(status)) {
-        throw new Error(`Report processing failed: ${status}`);
-      } else {
-        await new Promise((resolve) => setTimeout(resolve, 20000));
+      let reportDocumentId: string | null = null;
+      let attempts = 0;
+      const maxAttempts = 10;
+
+      while (!reportDocumentId && attempts < maxAttempts) {
+        attempts++;
+        const getReportResponse = await axios.get(
+          `https://sellingpartnerapi-na.amazon.com/reports/2021-06-30/reports/${reportId}`,
+          { headers }
+        );
+
+        const status: string = getReportResponse.data.processingStatus;
+
+        if (status === "DONE") {
+          reportDocumentId = getReportResponse.data.reportDocumentId;
+        } else if (["CANCELLED", "FATAL"].includes(status)) {
+          throw new Error(`Report processing failed: ${status}`);
+        } else {
+          await new Promise((resolve) => setTimeout(resolve, 20000));
+        }
       }
+
+      if (!reportDocumentId) {
+        throw new Error("Report was not ready after maximum attempts");
+      }
+
+      const getDocResponse = await axios.get(
+        `https://sellingpartnerapi-na.amazon.com/reports/2021-06-30/documents/${reportDocumentId}`,
+        { headers }
+      );
+
+      const downloadUrl: string = getDocResponse.data.url;
+      const compressionAlgorithm: string | undefined =
+        getDocResponse.data.compressionAlgorithm;
+
+      const fileResponse = await axios.get(downloadUrl, {
+        responseType: "arraybuffer",
+      });
+
+      let fileData: string;
+
+      if (compressionAlgorithm === "GZIP") {
+        fileData = zlib.gunzipSync(fileResponse.data).toString("utf-8");
+      } else {
+        fileData = Buffer.from(fileResponse.data).toString("utf-8");
+      }
+
+      const returnsJson = parseTSVtoJSON(fileData);
+      const summary = getSummaryMetrics(returnsJson);
+
+      return res.status(200).json({
+        reportId,
+        reportDocumentId,
+        compressionAlgorithm: compressionAlgorithm || "none",
+        count: returnsJson.length,
+        returnsData: returnsJson,
+        ...summary,
+      });
     }
-
-    if (!reportDocumentId) {
-      throw new Error("Report was not ready after maximum attempts");
-    }
-
-    const getDocResponse = await axios.get(
-      `https://sellingpartnerapi-na.amazon.com/reports/2021-06-30/documents/${reportDocumentId}`,
-      { headers }
-    );
-
-    const downloadUrl: string = getDocResponse.data.url;
-    const compressionAlgorithm: string | undefined =
-      getDocResponse.data.compressionAlgorithm;
-
-    const fileResponse = await axios.get(downloadUrl, {
-      responseType: "arraybuffer",
-    });
-
-    let fileData: string;
-
-    if (compressionAlgorithm === "GZIP") {
-      fileData = zlib.gunzipSync(fileResponse.data).toString("utf-8");
-    } else {
-      fileData = Buffer.from(fileResponse.data).toString("utf-8");
-    }
-
-    const returnsJson = parseTSVtoJSON(fileData);
-    const summary = getSummaryMetrics(returnsJson);
-
-    return res.status(200).json({
-      reportId,
-      reportDocumentId,
-      compressionAlgorithm: compressionAlgorithm || "none",
-      count: returnsJson.length,
-      returnsData: returnsJson,
-      ...summary,
-    });
   } catch (error: any) {
     console.error("Error fetching returns report:", error.message);
     return res.status(500).json({
@@ -552,8 +584,30 @@ const getAccount = async (req: Request, res: Response) => {
       "Content-Type": "application/json",
     };
 
-    const response = await axios.get(
-      `${endpoint}/sellers/v1/marketplaceParticipations`,
+    const body = {
+      FeesEstimateRequestList: [
+        {
+          MarketplaceId: "A21TJRUUN4KGV",
+          IdType: "SellerSKU",
+          IdValue: "Kids-Butterfly-Blue-0-1 Years",
+          IsAmazonFulfilled: true,
+          Identifier: "Estimate1",
+          PriceToEstimateFees: {
+            ListingPrice: {
+              CurrencyCode: "USD",
+              Amount: 10.0,
+            },
+            Shipping: {
+              CurrencyCode: "USD",
+              Amount: 0.0,
+            },
+          },
+        },
+      ],
+    };
+    const response = await axios.post(
+      `${endpoint}/products/fees/v0/feesEstimate`,
+      body,
       { headers }
     );
 
@@ -571,73 +625,99 @@ const getAccount = async (req: Request, res: Response) => {
 };
 
 const getInventoryValue = async (req: Request, res: Response) => {
-  if (USE_DUMMY_DATA) {
-    const dummyItems = [
-      { offers: [{ price: { amount: "50.00" } }], fulfillmentAvailability: [{ quantity: 20 }] },
-      { offers: [{ price: { amount: "30.00" } }], fulfillmentAvailability: [{ quantity: 10 }] },
-      { offers: [{ price: { amount: "100.00" } }], fulfillmentAvailability: [{ quantity: 5 }] },
-    ];
-
-    const dummyTotal = dummyItems.reduce((sum, item) => {
-      const price = parseFloat(item.offers?.[0]?.price?.amount ?? "0");
-      const qty = parseInt(String(item.fulfillmentAvailability?.[0]?.quantity ?? "0"), 10);
-      return sum + price * qty;
-    }, 0);
-
-    return res.status(200).json({
-      totalInventoryValue: dummyTotal.toFixed(2),
-      currency: "USD",
-      source: "dummy",
-    });
-  }
-
-
-  const sellerId = "A2NH4IXZ2D0U9U";
-  const marketplaceId = "A21TJRUUN4KGV";
-  const endpointBase = "https://sellingpartnerapi-eu.amazon.com";
+  const {
+    marketplaceId = "A21TJRUUN4KGV",
+    sku = "0W-C7T5-ESJ7",
+    sellerId = "AXO3C55P4B1RQ",
+  } = req.query;
 
   let totalValue = 0;
   let nextToken: string | undefined;
+  let retryCount = 0;
+  const maxRetries = 5;
+  let inventoryItems = [] as any[];
 
   try {
     const authTokens = await authenticate();
+    const baseUrl = `${endpoint}/listings/2021-08-01/items/${sellerId}`;
+
+    const queryParams: Record<string, string> = {
+      marketplaceIds: marketplaceId as string,
+      includedData: "offers,fulfillmentAvailability" as string,
+    };
+
+    const fetchInventory = async () => {
+      if (nextToken) {
+        queryParams.pageToken = nextToken;
+      } else {
+        delete queryParams.pageToken;
+      }
+
+      const queryString = new URLSearchParams(queryParams).toString();
+      const url = `${baseUrl}?${queryString}`;
+
+      console.log("Fetching inventory from URL:", url);
+
+      try {
+        const response = await axios.get(url, {
+          headers: {
+            "x-amz-access-token": authTokens.access_token,
+            "Content-Type": "application/json",
+          },
+        });
+
+        const { items, pagination } = response.data;
+
+        if (!Array.isArray(items)) {
+          throw new Error("Unexpected response format: items is not an array");
+        }
+
+        for (const item of items) {
+          const price = parseFloat(item.offers?.[0]?.price?.amount ?? "0");
+          const qty = parseInt(
+            item.fulfillmentAvailability?.[0]?.quantity ?? "0",
+            10
+          );
+          totalValue += price * qty;
+        }
+
+        if (items) {
+          inventoryItems.push(items);
+        }
+
+        nextToken = pagination?.nextToken || undefined;
+        retryCount = 0; // reset on success
+      } catch (error: any) {
+        if (error.response?.status === 429 && retryCount < maxRetries) {
+          retryCount++;
+          const retryAfter =
+            error.response.headers["retry-after"] || Math.pow(2, retryCount);
+          console.warn(`Rate limited. Retrying after ${retryAfter} seconds...`);
+          await new Promise((resolve) =>
+            setTimeout(resolve, retryAfter * 1000)
+          );
+          await fetchInventory(); // retry
+        } else {
+          throw error;
+        }
+      }
+    };
 
     do {
-      const url = new URL(`${endpointBase}/listings/2021-08-01/items/${encodeURIComponent(sellerId)}`);
-      url.searchParams.set("marketplaceIds", marketplaceId);
-      url.searchParams.set("includedData", "offers,fulfillmentAvailability");
-      if (nextToken) url.searchParams.set("nextToken", nextToken);
-
-      const { data } = await axios.get(url.toString(), {
-        headers: {
-          Authorization: `Bearer ${authTokens.access_token}`,
-          "x-amz-access-token": authTokens.access_token,
-          "Content-Type": "application/json",
-        },
-      });
-
-      const { items, pagination } = data;
-      if (!Array.isArray(items)) {
-        throw new Error("Unexpected response format");
-      }
-
-      for (const item of items) {
-        const price = parseFloat(item.offers?.[0]?.price?.amount ?? "0");
-        const qty = parseInt(item.fulfillmentAvailability?.[0]?.quantity ?? "0", 10);
-        totalValue += price * qty;
-      }
-
-      nextToken = pagination?.nextToken;
+      await fetchInventory();
     } while (nextToken);
 
     return res.status(200).json({
       totalInventoryValue: totalValue.toFixed(2),
       currency: "INR",
       source: "live",
+      items: inventoryItems.flat(),
     });
-
   } catch (error: any) {
-    console.error("Error fetching inventory value:", error.response?.data || error.message);
+    console.error(
+      "Error fetching inventory value:",
+      error.response?.data || error.message
+    );
     return res.status(500).json({
       message: error.message,
       response: error.response?.data || null,
@@ -645,6 +725,61 @@ const getInventoryValue = async (req: Request, res: Response) => {
   }
 };
 
+const postReturns = async (req: Request, res: Response) => {
+  try {
+    const {
+      returnDate,
+      orderId,
+      asin,
+      sku,
+      marketplaceId,
+      condition,
+      reason,
+      quantity,
+      status,
+      refundAmount,
+    } = req.body;
+
+    console.log("BODY: ",req.body)
+
+    if (
+      !returnDate ||
+      !orderId ||
+      !asin ||
+      !sku ||
+      !marketplaceId ||
+      !condition ||
+      !reason ||
+      !quantity
+    ) {
+      return res.status(400).json({ message: "All fields are required" });
+    }
+
+    const newReturn = new ReturnModel({
+      returnDate,
+      orderId,
+      asin,
+      sku,
+      marketplaceId,
+      condition,
+      reason,
+      status,
+      quantity,
+      refundAmount: refundAmount || 0,
+    });
+
+    await newReturn.save();
+
+    return res
+      .status(201)
+      .json({ message: "Return added successfully", data: newReturn });
+  } catch (error: any) {
+    console.error("Error adding return:", error.message);
+    return res
+      .status(500)
+      .json({ message: "Server error", error: error.message });
+  }
+};
 
 module.exports = {
   auth,
@@ -654,15 +789,5 @@ module.exports = {
   getPaymentDetails,
   getAccount,
   getInventoryValue,
+  postReturns,
 };
-
-// 'A13V1IB3VIYZZH': 'France',
-//   'APJ6JRA9NG5V4': 'Italy',
-//   'A1RKKUPIHCS9HS': 'Spain',
-//   'AMEN7PMS3EDWL': 'Belgium',
-//   'A1PA6795UKMFR9': 'Germany',
-//   'A1805IZSGTT6HS': 'Netherlands',
-//   'A1F83G8C2ARO7P': 'United Kingdom',
-//   'A1C3SOZRARQ6R3': 'Poland',
-//   'A2NODRKZP88ZB9': 'Sweden'
-// }

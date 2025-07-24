@@ -1,6 +1,4 @@
-
-
-const listingData = (marketplace_id) => {
+var listingData = function (marketplace_id) {
     return {
         productType: "LUGGAGE",
         requirements: "LISTING",
@@ -19,10 +17,9 @@ const listingData = (marketplace_id) => {
                 },
             ],
         },
-    }
-}
-
-const patchListingData = (marketplace_id) => {
+    };
+};
+var patchListingData = function (marketplace_id) {
     return {
         productType: "LUGGAGE",
         // Below are the list of possible patches possible for a listing. Depending on your need, you would need to reduce the array of patches. each object in the array of patches is a patch
@@ -68,10 +65,9 @@ const patchListingData = (marketplace_id) => {
                 ],
             },
         ],
-    }
-}
-
+    };
+};
 module.exports = {
-    listingData, // marketplace_id should be passed anywhere this function is called.
-    patchListingData, // marketplace_id should be passed anywhere this function is called.
-}
+    listingData: listingData, // marketplace_id should be passed anywhere this function is called.
+    patchListingData: patchListingData,
+};

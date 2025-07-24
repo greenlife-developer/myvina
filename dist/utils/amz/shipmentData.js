@@ -1,6 +1,4 @@
-
-
-const shipmentData = () => {
+var shipmentData = function () {
     return {
         clientReferenceId: "911-7267646-6348616",
         shipFrom: {
@@ -57,10 +55,8 @@ const shipmentData = () => {
                 },
             },
         ],
-    }
-}
-
-
+    };
+};
 module.exports = {
-    shipmentData,
-}
+    shipmentData: shipmentData,
+};

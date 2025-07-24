@@ -7,7 +7,8 @@ const {
   getCustomerReturnsReport,
   getPaymentDetails,
   getAccount,
-  getInventoryValue
+  getInventoryValue,
+  postReturns,
 } = require("../controllers/amzController");
 
 router.post("/auth", auth);
@@ -16,6 +17,7 @@ router.get("/get-inventory", getInventory);
 router.get("/get-customer-returns-report", getCustomerReturnsReport);
 router.get("/get-payment-details", getPaymentDetails);
 router.get("/get-account", getAccount);
-router.get("/inventory-value", getInventoryValue)
+router.get("/inventory-value", getInventoryValue);
+router.post("/post-returns", postReturns);
 
-module.exports = router;
+module.exports = router; 

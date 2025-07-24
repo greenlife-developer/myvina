@@ -1,7 +1,7 @@
 const axios = require("axios");
 
 
-const authenticate = async () => {
+export const authenticate = async () => {
     try {
         const response = await axios.post("https://api.amazon.com/auth/o2/token", {
             grant_type: "refresh_token",
@@ -16,7 +16,3 @@ const authenticate = async () => {
     }
 };
 
-
-module.exports = {
-    authenticate
-}

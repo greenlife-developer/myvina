@@ -1,4 +1,4 @@
-const exampleFeedDocument = () => {
+export const exampleFeedDocument = () => {
     return {
         header: {
             sellerId: process.env.AMZ_SELLER_ID,
@@ -89,8 +89,4 @@ const exampleFeedDocument = () => {
             },
         ],
     }
-}
-
-module.exports = {
-    exampleFeedDocument
 }
